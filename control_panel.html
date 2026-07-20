@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Instagents — Live Control Panel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    color-scheme: light;
+    --page-plane:     #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --muted:          #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+
+    --series-1: #2a78d6; /* orchestrator - blue */
+    --series-2: #008300; /* researcher - green */
+    --series-3: #e87ba4; /* coder - magenta */
+    --series-4: #eda100; /* writer - yellow */
+    --series-5: #1baf7a; /* critic - aqua */
+    --series-6: #eb6834; /* arbiter - orange */
+    --magnitude: var(--series-1);
+
+    --status-good:     #0ca30c;
+    --status-warning:  #fab219;
+    --status-serious:  #ec835a;
+    --status-critical: #d03b3b;
+    --status-neutral:  #898781;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page-plane:     #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --muted:          #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+
+      --series-1: #3987e5;
+      --series-2: #008300;
+      --series-3: #d55181;
+      --series-4: #c98500;
+      --series-5: #199e70;
+      --series-6: #d95926;
+
+      --status-good:     #0ca30c;
+      --status-warning:  #fab219;
+      --status-serious:  #ec835a;
+      --status-critical: #e66767;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+  h1 { font-size: 1.15rem; margin: 0 0 0.15rem; }
+  .subtitle { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem; }
+
+  .panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+
+  form#run-form { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.75rem; }
+  textarea#task-input {
+    width: 100%; min-height: 4.2rem; resize: vertical;
+    font: inherit; font-size: 0.92rem; padding: 0.6rem 0.7rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface-1); color: var(--text-primary);
+  }
+  details.advanced { font-size: 0.82rem; color: var(--text-secondary); }
+  details.advanced summary { cursor: pointer; user-select: none; }
+  .advanced-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }
+  .advanced-grid label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.78rem; }
+  .advanced-grid input {
+    width: 6.5rem; font: inherit; font-size: 0.85rem; padding: 0.3rem 0.45rem;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface-1); color: var(--text-primary);
+  }
+  .run-row { display: flex; align-items: center; gap: 0.75rem; }
+  button#run-btn {
+    font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    padding: 0.5rem 1.1rem; border-radius: 7px; border: none;
+    background: var(--series-1); color: white;
+  }
+  button#run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  #run-banner { font-size: 0.85rem; color: var(--text-secondary); }
+  #run-banner .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.4rem; }
+  #run-banner.running .dot { background: var(--series-1); animation: pulse 1.1s ease-in-out infinite; }
+  #run-banner.done .dot { background: var(--status-good); }
+  #run-banner.error .dot { background: var(--status-critical); }
+  #run-banner.idle .dot { background: var(--status-neutral); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .grid { display: grid; grid-template-columns: 1fr 320px; gap: 1rem; margin-top: 1rem; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.75rem; }
+
+  /* DAG */
+  #dag-canvas { position: relative; min-height: 120px; overflow-x: auto; padding-bottom: 0.5rem; }
+  #dag-columns { display: flex; gap: 2.5rem; align-items: flex-start; }
+  .dag-col { display: flex; flex-direction: column; gap: 0.9rem; min-width: 220px; }
+  #dag-svg { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+  #dag-svg path { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+
+  details.dag-node {
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1);
+    font-size: 0.8rem; position: relative; z-index: 1;
+  }
+  details.dag-node summary {
+    cursor: pointer; list-style: none; padding: 0.55rem 0.7rem; display: flex; flex-direction: column; gap: 0.3rem;
+  }
+  details.dag-node summary::-webkit-details-marker { display: none; }
+  .dag-node-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+  .dag-id { font-weight: 600; font-family: ui-monospace, monospace; }
+  .role-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.35rem; flex: none; }
+  .role-orchestrator { background: var(--series-1); }
+  .role-researcher { background: var(--series-2); }
+  .role-coder { background: var(--series-3); }
+  .role-writer { background: var(--series-4); }
+  .role-critic { background: var(--series-5); }
+  .role-arbiter { background: var(--series-6); }
+  .role-label { color: var(--text-secondary); font-size: 0.75rem; }
+  .dag-desc { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+  .dag-body { padding: 0 0.7rem 0.65rem; color: var(--text-secondary); border-top: 1px solid var(--gridline); margin-top: 0.1rem; padding-top: 0.5rem; }
+  .dag-body ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; font-weight: 600;
+    padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
+  }
+  .status-pending, .status-ready { color: var(--status-neutral); background: color-mix(in srgb, var(--status-neutral) 14%, transparent); }
+  .status-in_progress, .status-in_review { color: var(--series-1); background: color-mix(in srgb, var(--series-1) 14%, transparent); }
+  .status-repair { color: var(--status-warning); background: color-mix(in srgb, var(--status-warning) 18%, transparent); }
+  .status-escalated { color: var(--status-serious); background: color-mix(in srgb, var(--status-serious) 18%, transparent); }
+  .status-committed { color: var(--status-good); background: color-mix(in srgb, var(--status-good) 16%, transparent); }
+  .status-dead_letter { color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 16%, transparent); }
+  .attempts-note { color: var(--muted); font-size: 0.7rem; }
+
+  /* stat rows / bars */
+  .stat-row { margin-bottom: 0.55rem; }
+  .stat-row:last-child { margin-bottom: 0; }
+  .stat-row-top { display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.25rem; }
+  .stat-row-top .label { color: var(--text-secondary); display: flex; align-items: center; }
+  .stat-row-top .value { font-variant-numeric: tabular-nums; color: var(--text-primary); font-weight: 600; }
+  .bar-track { height: 6px; border-radius: 4px; background: var(--gridline); overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; background: var(--magnitude); }
+  .bar-fill.warn { background: var(--status-warning); }
+  .bar-fill.crit { background: var(--status-critical); }
+  .variant-row { margin: 0.35rem 0 0.35rem 1rem; }
+  .variant-row .stat-row-top { font-size: 0.72rem; }
+  .variant-row .bar-track { height: 4px; }
+  .variant-suffix { color: var(--muted); font-size: 0.68rem; display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .tiles { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .tile { flex: 1; min-width: 80px; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem; text-align: center; }
+  .tile .n { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tile .n.crit { color: var(--status-critical); }
+  .tile .lbl { font-size: 0.68rem; color: var(--muted); margin-top: 0.1rem; }
+
+  /* decision log */
+  #log-panel { margin-top: 1rem; }
+  #log { max-height: 320px; overflow-y: auto; font-size: 0.78rem; }
+  .log-row { display: flex; gap: 0.6rem; padding: 0.3rem 0; border-bottom: 1px solid var(--gridline); }
+  .log-row:last-child { border-bottom: none; }
+  .log-ts { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .log-ev { font-weight: 600; white-space: nowrap; }
+  .log-ev.good { color: var(--status-good); }
+  .log-ev.warn { color: var(--status-warning); }
+  .log-ev.serious { color: var(--status-serious); }
+  .log-ev.crit { color: var(--status-critical); }
+  .log-detail { color: var(--text-secondary); font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .empty-note { color: var(--muted); font-size: 0.82rem; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Instagents — Live Control Panel</h1>
+  <div class="subtitle">Submit a task and watch the multi-agent pipeline run against live Redis state.</div>
+
+  <div class="panel">
+    <form id="run-form">
+      <textarea id="task-input" placeholder="e.g. Write a Python function that checks if a number is prime, with a pytest test, and a short README."></textarea>
+      <details class="advanced">
+        <summary>Advanced options</summary>
+        <div class="advanced-grid">
+          <label>Workers <input type="number" id="opt-workers" value="3" min="1" max="8"></label>
+          <label>Timeout (s) <input type="number" id="opt-timeout" value="200" min="10" max="600"></label>
+          <label>Max LLM calls <input type="number" id="opt-max-llm" value="60" min="1"></label>
+          <label>Max tool calls <input type="number" id="opt-max-tool" value="150" min="1"></label>
+        </div>
+      </details>
+      <div class="run-row">
+        <button type="submit" id="run-btn">Run</button>
+        <div id="run-banner" class="idle"><span class="dot"></span>Idle — no run yet.</div>
+      </div>
+    </form>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Task graph</h2>
+      <div id="dag-canvas">
+        <div id="dag-columns"></div>
+        <svg id="dag-svg" width="0" height="0">
+          <defs>
+            <marker id="dag-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)" />
+            </marker>
+          </defs>
+          <g id="dag-edges"></g>
+        </svg>
+      </div>
+      <div id="dag-empty" class="empty-note">No tasks yet — submit one above.</div>
+    </div>
+
+    <div>
+      <div class="panel" style="margin-bottom:1rem">
+        <h2>Reputation</h2>
+        <div id="reputation-body"></div>
+      </div>
+      <div class="panel" style="margin-bottom:1rem">
+        <h2>Playbook</h2>
+        <div class="tiles" id="playbook-body"></div>
+      </div>
+      <div class="panel">
+        <h2>Budget &amp; queue</h2>
+        <div id="budget-body"></div>
+        <div class="tiles" id="queue-body" style="margin-top:0.7rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="log-panel">
+    <h2>Decision log</h2>
+    <div id="log"></div>
+    <div id="log-empty" class="empty-note">No events yet.</div>
+  </div>
+</div>
+
+<script>
+const ROLE_ORDER = ["orchestrator", "researcher", "coder", "writer", "critic", "arbiter"];
+const STATUS_ICON = {
+  pending: "○", ready: "○", in_progress: "▶", in_review: "▶",
+  repair: "↺", escalated: "▲", committed: "✓", dead_letter: "✕",
+};
+const LOG_TINT = {
+  committed: "good", dead_letter: "crit", escalated: "serious", repair: "warn",
+};
+
+let logSince = 0;
+let currentNodeIds = null;
+let autoScroll = true;
+let lastNodesData = [];
+
+function fmtPct(n) { return Math.round(n * 100); }
+
+function renderBanner(run) {
+  const el = document.getElementById("run-banner");
+  const btn = document.getElementById("run-btn");
+  if (run.error) {
+    el.className = "error";
+    el.innerHTML = `<span class="dot"></span>Error on "${escapeHtml(run.task || "")}": ${escapeHtml(run.error)}`;
+  } else if (run.running) {
+    el.className = "running";
+    const secs = run.started_at ? Math.round(Date.now()/1000 - run.started_at) : 0;
+    el.innerHTML = `<span class="dot"></span>Running "${escapeHtml(run.task || "")}" (${secs}s)`;
+  } else if (run.run_id) {
+    el.className = "done";
+    el.innerHTML = `<span class="dot"></span>Finished "${escapeHtml(run.task || "")}"`;
+  } else {
+    el.className = "idle";
+    el.innerHTML = `<span class="dot"></span>Idle — no run yet.`;
+  }
+  btn.disabled = !!run.running;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function computeLayers(nodes) {
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const memo = {};
+  function layerOf(id, seen) {
+    if (memo[id] !== undefined) return memo[id];
+    if (seen.has(id)) return (memo[id] = 0);
+    seen.add(id);
+    const n = byId[id];
+    if (!n || !n.dependencies.length) return (memo[id] = 0);
+    const deps = n.dependencies.filter(d => byId[d]).map(d => layerOf(d, seen));
+    return (memo[id] = deps.length ? 1 + Math.max(...deps) : 0);
+  }
+  nodes.forEach(n => layerOf(n.id, new Set()));
+  return memo;
+}
+
+function nodeCard(n) {
+  const details = document.createElement("details");
+  details.className = "dag-node";
+  details.dataset.taskId = n.id;
+
+  const summary = document.createElement("summary");
+  const icon = STATUS_ICON[n.status] || "○";
+  const attempts = n.attempts > 0 ? `<span class="attempts-note">attempt ${n.attempts}</span>` : "";
+  summary.innerHTML = `
+    <div class="dag-node-top">
+      <span class="dag-id"><span class="role-dot role-${n.assigned_agent}"></span>${escapeHtml(n.id)}</span>
+      <span class="status-pill status-${n.status}">${icon} ${n.status.replace("_"," ")}</span>
+    </div>
+    <div class="dag-node-top">
+      <span class="role-label">${n.assigned_agent}</span>
+      ${attempts}
+    </div>
+    <div class="dag-desc" title="${escapeHtml(n.description)}">${escapeHtml(n.description)}</div>
+  `;
+  details.appendChild(summary);
+
+  const body = document.createElement("div");
+  body.className = "dag-body";
+  const criteria = (n.acceptance_criteria || []).map(c => `<li>${escapeHtml(c)}</li>`).join("");
+  body.innerHTML = `
+    <div><strong>Depends on:</strong> ${n.dependencies.length ? n.dependencies.join(", ") : "—"}</div>
+    <div style="margin-top:0.35rem"><strong>Acceptance criteria:</strong><ul>${criteria || "<li>—</li>"}</ul></div>
+    ${n.artifact_ref ? `<div style="margin-top:0.35rem"><strong>Artifact:</strong> ${escapeHtml(n.artifact_ref)}</div>` : ""}
+  `;
+  details.appendChild(body);
+  details.addEventListener("toggle", () => requestAnimationFrame(() => drawEdges(lastNodesData)));
+  return details;
+}
+
+function updateCardInPlace(n) {
+  const details = document.querySelector(`.dag-node[data-task-id="${CSS.escape(n.id)}"]`);
+  if (!details) return;
+  const pill = details.querySelector(".status-pill");
+  const icon = STATUS_ICON[n.status] || "○";
+  pill.className = `status-pill status-${n.status}`;
+  pill.textContent = `${icon} ${n.status.replace("_"," ")}`;
+  const attemptsEl = details.querySelectorAll(".dag-node-top")[1];
+  const noteHtml = n.attempts > 0 ? `<span class="attempts-note">attempt ${n.attempts}</span>` : "";
+  attemptsEl.innerHTML = `<span class="role-label">${n.assigned_agent}</span>${noteHtml}`;
+}
+
+function drawEdges(nodes) {
+  const canvas = document.getElementById("dag-canvas");
+  const svg = document.getElementById("dag-svg");
+  const g = document.getElementById("dag-edges");
+  const canvasRect = canvas.getBoundingClientRect();
+  svg.setAttribute("width", canvas.scrollWidth);
+  svg.setAttribute("height", canvas.scrollHeight);
+  g.innerHTML = "";
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  nodes.forEach(n => {
+    const toEl = document.querySelector(`.dag-node[data-task-id="${CSS.escape(n.id)}"]`);
+    if (!toEl) return;
+    const toRect = toEl.getBoundingClientRect();
+    const tx = toRect.left - canvasRect.left + canvas.scrollLeft;
+    const ty = toRect.top - canvasRect.top + toRect.height / 2 + canvas.scrollTop;
+    n.dependencies.forEach(depId => {
+      const fromEl = document.querySelector(`.dag-node[data-task-id="${CSS.escape(depId)}"]`);
+      if (!fromEl || !byId[depId]) return;
+      const fromRect = fromEl.getBoundingClientRect();
+      const fx = fromRect.right - canvasRect.left + canvas.scrollLeft;
+      const fy = fromRect.top - canvasRect.top + fromRect.height / 2 + canvas.scrollTop;
+      const midX = (fx + tx) / 2;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", `M ${fx} ${fy} C ${midX} ${fy}, ${midX} ${ty}, ${tx - 6} ${ty}`);
+      path.setAttribute("marker-end", "url(#dag-arrow)");
+      g.appendChild(path);
+    });
+  });
+}
+
+function renderDag(nodes) {
+  lastNodesData = nodes;
+  document.getElementById("dag-empty").style.display = nodes.length ? "none" : "block";
+  if (!nodes.length) {
+    currentNodeIds = null;
+    document.getElementById("dag-columns").innerHTML = "";
+    document.getElementById("dag-edges").innerHTML = "";
+    return;
+  }
+
+  const ids = nodes.map(n => n.id).sort().join(",");
+  if (ids !== currentNodeIds) {
+    currentNodeIds = ids;
+    const layers = computeLayers(nodes);
+    const maxLayer = Math.max(...Object.values(layers));
+    const columnsEl = document.getElementById("dag-columns");
+    columnsEl.innerHTML = "";
+    for (let i = 0; i <= maxLayer; i++) {
+      const col = document.createElement("div");
+      col.className = "dag-col";
+      nodes.filter(n => layers[n.id] === i).forEach(n => col.appendChild(nodeCard(n)));
+      columnsEl.appendChild(col);
+    }
+  } else {
+    nodes.forEach(updateCardInPlace);
+  }
+  // Redrawn every poll (not just on first render/rebuild) because expanding/collapsing a
+  // <details> card changes its column's layout height, which would otherwise leave edges
+  // pointing at stale positions for any node stacked below it in the same column.
+  requestAnimationFrame(() => drawEdges(nodes));
+}
+
+function barRow(label, score, note, small) {
+  const pct = fmtPct(score);
+  return `
+    <div class="stat-row${small ? " variant-row" : ""}">
+      <div class="stat-row-top"><span class="label">${label}</span><span class="value">${score.toFixed(2)}${note ? ` <span style="color:var(--muted);font-weight:400">${note}</span>` : ""}</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+}
+
+function renderReputation(rep) {
+  let html = "";
+  ROLE_ORDER.forEach(role => {
+    const s = rep.roles[role];
+    if (!s) return;
+    html += barRow(`<span class="role-dot role-${role}"></span>${role}`, s.score, `(${s.successes}/${s.attempts})`);
+    const variants = rep.variants[role];
+    if (variants) {
+      variants.forEach(v => {
+        html += barRow(`v${v.variant}`, v.score, `(${v.successes}/${v.attempts})`, true);
+        html += `<div class="variant-suffix" title="${escapeHtml(v.suffix)}">${escapeHtml(v.suffix)}</div>`;
+      });
+    }
+  });
+  document.getElementById("reputation-body").innerHTML = html;
+}
+
+function renderPlaybook(pb) {
+  const html = Object.entries(pb).map(([role, count]) => `
+    <div class="tile"><div class="n">${count}/5</div><div class="lbl">${role}</div></div>
+  `).join("");
+  document.getElementById("playbook-body").innerHTML = html || `<span class="empty-note">No exemplars yet.</span>`;
+}
+
+function renderBudgetQueue(budget, queue) {
+  const llmPct = budget.max_llm_calls ? budget.llm_calls / budget.max_llm_calls : 0;
+  const toolPct = budget.max_tool_calls ? budget.tool_calls / budget.max_tool_calls : 0;
+  const fillClass = p => p >= 1 ? "crit" : p >= 0.8 ? "warn" : "";
+  document.getElementById("budget-body").innerHTML = `
+    <div class="stat-row">
+      <div class="stat-row-top"><span class="label">LLM calls</span><span class="value">${budget.llm_calls}/${budget.max_llm_calls}</span></div>
+      <div class="bar-track"><div class="bar-fill ${fillClass(llmPct)}" style="width:${Math.min(100, fmtPct(llmPct))}%"></div></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-row-top"><span class="label">Tool calls</span><span class="value">${budget.tool_calls}/${budget.max_tool_calls}</span></div>
+      <div class="bar-track"><div class="bar-fill ${fillClass(toolPct)}" style="width:${Math.min(100, fmtPct(toolPct))}%"></div></div>
+    </div>`;
+  document.getElementById("queue-body").innerHTML = `
+    <div class="tile"><div class="n">${queue.pending}</div><div class="lbl">pending</div></div>
+    <div class="tile"><div class="n">${queue.processing}</div><div class="lbl">processing</div></div>
+    <div class="tile"><div class="n ${queue.dead_letter ? "crit" : ""}">${queue.dead_letter}</div><div class="lbl">dead letter</div></div>`;
+}
+
+function appendLog(events) {
+  if (!events.length) return;
+  document.getElementById("log-empty").style.display = "none";
+  const logEl = document.getElementById("log");
+  events.forEach(e => {
+    const row = document.createElement("div");
+    row.className = "log-row";
+    const tint = LOG_TINT[e.event] || "";
+    const detail = JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !["timestamp","event"].includes(k))));
+    row.innerHTML = `
+      <span class="log-ts">${escapeHtml((e.timestamp || "").split("T")[1]?.split(".")[0] || "")}</span>
+      <span class="log-ev ${tint}">${escapeHtml(e.event)}</span>
+      <span class="log-detail" title="${escapeHtml(detail)}">${escapeHtml(detail)}</span>`;
+    logEl.appendChild(row);
+  });
+  if (autoScroll) logEl.scrollTop = logEl.scrollHeight;
+}
+
+document.getElementById("log").addEventListener("scroll", (e) => {
+  const el = e.target;
+  autoScroll = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+});
+
+async function poll() {
+  try {
+    const res = await fetch(`/api/status?log_since=${logSince}`);
+    const data = await res.json();
+    renderBanner(data.run);
+    renderDag(data.nodes);
+    renderReputation(data.reputation);
+    renderPlaybook(data.playbook);
+    renderBudgetQueue(data.budget, data.queue_depth);
+    appendLog(data.log);
+    logSince = data.log_total;
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setTimeout(poll, 1000);
+  }
+}
+
+document.getElementById("run-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const task = document.getElementById("task-input").value.trim();
+  if (!task) return;
+  const payload = {
+    task,
+    workers: Number(document.getElementById("opt-workers").value),
+    timeout: Number(document.getElementById("opt-timeout").value),
+    max_llm_calls: Number(document.getElementById("opt-max-llm").value),
+    max_tool_calls: Number(document.getElementById("opt-max-tool").value),
+  };
+  const res = await fetch("/api/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 409) {
+    alert("A run is already in progress.");
+    return;
+  }
+  if (!res.ok) {
+    alert("Failed to start run: " + (await res.text()));
+    return;
+  }
+  logSince = 0;
+  currentNodeIds = null;
+  document.getElementById("log").innerHTML = "";
+  document.getElementById("log-empty").style.display = "block";
+});
+
+poll();
+</script>
+</body>
+</html>

@@ -43,6 +43,9 @@ class Playbook:
         self.redis.lpush(key, json.dumps(entry))
         self.redis.ltrim(key, 0, MAX_ENTRIES - 1)
 
+    def count(self, role: AgentRole) -> int:
+        return self.redis.llen(self._key(role))
+
     def exemplars(self, role: AgentRole, limit: int = EXEMPLARS_PER_CONTEXT) -> list[dict]:
         raw = self.redis.lrange(self._key(role), 0, limit - 1)
         return [json.loads(r) for r in raw]

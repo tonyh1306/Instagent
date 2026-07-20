@@ -90,6 +90,23 @@ Then open `http://127.0.0.1:8756/dashboard` (add `?task=...` to use a different 
 the default). Each load triggers a fresh comparison run and takes a few minutes end to end,
 since it runs both systems live against the API.
 
+## Running the live control panel
+
+Submit any task and watch the multi-agent pipeline run against live Redis state: the task
+DAG with per-node status (pending/in-progress/repair/escalated/committed/dead-letter), the
+decision log streaming in as it's written, and live reputation/diversity/playbook/budget
+panels.
+
+```bash
+uv run uvicorn control_panel:app --port 8760
+```
+
+Open `http://127.0.0.1:8760/`, type a task, and hit Run. The page polls `/api/status` once a
+second - no websocket required, since every value it shows is already just a Redis read via
+the same blackboard/reputation/playbook/budget/worker-pool objects the pipeline itself uses.
+It runs one pipeline at a time (a second submission while one is in flight gets rejected),
+matching the rest of the system's single-run-at-a-time Redis state.
+
 ## Cross-run learning: reputation, diversity, playbook
 
 Three mechanisms make the system's behavior improve across runs, not just within one:
@@ -134,6 +151,7 @@ persistent memory graph.
 | `playbook.py` | Cross-run few-shot exemplars distilled from first-attempt successes |
 | `baseline.py` | Single-agent comparison runner |
 | `dashboard.py` | FastAPI live comparison dashboard |
+| `control_panel.py` / `control_panel.html` | FastAPI live control panel: submit a task, watch it run |
 | `agents/` | `base_agent.py` (tool-calling loop) + one file per role |
 
 See `CLAUDE.md` for the full architecture and design rationale.
